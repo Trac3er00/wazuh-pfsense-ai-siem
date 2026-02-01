@@ -2,8 +2,6 @@
 
 A complete home lab security monitoring stack with AI-enhanced threat detection and automated incident response.
 
-![Architecture](docs/images/architecture.png)
-
 ## 🎯 Overview
 
 This project implements a comprehensive security monitoring solution that combines:
