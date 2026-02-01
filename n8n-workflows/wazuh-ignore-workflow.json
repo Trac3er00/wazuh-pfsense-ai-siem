@@ -1,0 +1,85 @@
+{
+  "name": "Wazuh Ignore Domain",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "wazuh-ignore",
+        "options": {}
+      },
+      "id": "webhook-ignore",
+      "name": "Ignore Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "wazuh-ignore"
+    },
+    {
+      "parameters": {
+        "command": "=echo '{{ $json.query.domain }}' >> /var/ossec/etc/lists/ignored-domains.txt && sort -u /var/ossec/etc/lists/ignored-domains.txt -o /var/ossec/etc/lists/ignored-domains.txt"
+      },
+      "id": "ssh-ignore",
+      "name": "SSH Add to Ignore",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": {
+        "sshPassword": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Wazuh Server"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "YOUR_DISCORD_WEBHOOK_HERE",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"embeds\": [{\n    \"title\": \"🚫 Domain Added to Ignore List\",\n    \"color\": 9807270,\n    \"fields\": [\n      {\"name\": \"Domain\", \"value\": \"`{{ $('Ignore Webhook').item.json.query.domain }}`\", \"inline\": true},\n      {\"name\": \"Client IP\", \"value\": \"{{ $('Ignore Webhook').item.json.query.clientip }}\", \"inline\": true},\n      {\"name\": \"Original Category\", \"value\": \"{{ $('Ignore Webhook').item.json.query.category }}\", \"inline\": true},\n      {\"name\": \"Result\", \"value\": \"Future alerts for this domain will be suppressed\", \"inline\": false}\n    ],\n    \"footer\": {\"text\": \"Wazuh Security • n8n Automation\"},\n    \"timestamp\": \"{{ $now.toISO() }}\"\n  }]\n}",
+        "options": {}
+      },
+      "id": "discord-confirm-ignore",
+      "name": "Discord Confirm",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    }
+  ],
+  "connections": {
+    "Ignore Webhook": {
+      "main": [
+        [
+          {
+            "node": "SSH Add to Ignore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH Add to Ignore": {
+      "main": [
+        [
+          {
+            "node": "Discord Confirm",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

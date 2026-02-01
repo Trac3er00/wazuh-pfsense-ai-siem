@@ -1,0 +1,85 @@
+{
+  "name": "Wazuh Quarantine Device",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "wazuh-quarantine",
+        "options": {}
+      },
+      "id": "webhook-quarantine",
+      "name": "Quarantine Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "wazuh-quarantine"
+    },
+    {
+      "parameters": {
+        "command": "=/usr/local/bin/pfsense-quarantine.sh block {{ $json.query.ip }} \"{{ $json.query.category }}: {{ $json.query.domain }}\""
+      },
+      "id": "ssh-quarantine",
+      "name": "SSH Quarantine",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": {
+        "sshPassword": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Wazuh Server"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "YOUR_DISCORD_WEBHOOK_HERE",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"embeds\": [{\n    \"title\": \"🔒 Device Quarantined\",\n    \"color\": 16711680,\n    \"fields\": [\n      {\"name\": \"IP Address\", \"value\": \"{{ $('Quarantine Webhook').item.json.query.ip }}\", \"inline\": true},\n      {\"name\": \"Threat Level\", \"value\": \"{{ $('Quarantine Webhook').item.json.query.threat }}\", \"inline\": true},\n      {\"name\": \"Domain/Source\", \"value\": \"{{ $('Quarantine Webhook').item.json.query.domain }}\", \"inline\": true},\n      {\"name\": \"Category\", \"value\": \"{{ $('Quarantine Webhook').item.json.query.category }}\", \"inline\": true},\n      {\"name\": \"Result\", \"value\": \"Device blocked on pfSense firewall\", \"inline\": false}\n    ],\n    \"footer\": {\"text\": \"Wazuh Security • n8n Automation\"},\n    \"timestamp\": \"{{ $now.toISO() }}\"\n  }]\n}",
+        "options": {}
+      },
+      "id": "discord-confirm-quarantine",
+      "name": "Discord Confirm",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    }
+  ],
+  "connections": {
+    "Quarantine Webhook": {
+      "main": [
+        [
+          {
+            "node": "SSH Quarantine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH Quarantine": {
+      "main": [
+        [
+          {
+            "node": "Discord Confirm",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

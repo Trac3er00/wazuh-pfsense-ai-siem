@@ -1,395 +1,324 @@
 # Troubleshooting Guide
 
-This guide covers common issues and solutions for the Wazuh + pfSense + AI SIEM stack.
+Common issues and solutions for the Wazuh AI SIEM stack.
 
 ## Table of Contents
-
-- [AI/LM Studio Issues](#ailm-studio-issues)
-- [Wazuh Agent Issues](#wazuh-agent-issues)
-- [Log Forwarding Issues](#log-forwarding-issues)
-- [Active Response Issues](#active-response-issues)
-- [Grafana Issues](#grafana-issues)
-- [Performance Issues](#performance-issues)
-
----
-
-## AI/LM Studio Issues
-
-### AI Returns "UNREACHABLE"
-
-**Symptoms:**
-```
-WARNING: AI unavailable (UNREACHABLE) - using fallback rules
-```
-
-**Solutions:**
-
-1. **Verify LM Studio is running:**
-   ```bash
-   # From pfSense
-   curl -s http://YOUR_MAC_IP:1234/v1/models
-   ```
-   Should return a list of models.
-
-2. **Check firewall rules:**
-   - Ensure pfSense allows outbound connections to port 1234
-   - Check Mac firewall settings
-
-3. **Verify network connectivity:**
-   ```bash
-   ping YOUR_MAC_IP
-   ```
-
-4. **Check LM Studio API server:**
-   - Open LM Studio
-   - Go to Local Server tab
-   - Ensure "Start Server" is enabled
-   - Default port should be 1234
-
-### AI Returns "ERROR" (Invalid JSON)
-
-**Symptoms:**
-```
-AI ERROR: Invalid body: failed to parse JSON value
-```
-
-**Solutions:**
-
-1. **Check for special characters in logs:**
-   The script sanitizes input, but unusual characters may slip through.
-   
-2. **Increase timeout:**
-   Edit `ai-firewall-block.sh`:
-   ```bash
-   # Change from 15 to 30 seconds
-   RESP=$(curl -s -m 30 -X POST "$AI_URL" ...
-   ```
-
-3. **Test with simple payload:**
-   ```bash
-   curl -s -X POST "http://YOUR_MAC_IP:1234/v1/chat/completions" \
-     -H "Content-Type: application/json" \
-     -d '{"model":"qwen/qwen3-14b","messages":[{"role":"user","content":"Say hello"}],"max_tokens":50}'
-   ```
-
-### AI Makes Wrong Decisions
-
-**Solutions:**
-
-1. **Lower temperature for more consistent output:**
-   Edit the script, change `"temperature":0.0` (already set to 0)
-
-2. **Review the prompt:**
-   The prompt in `ai-firewall-block.sh` can be adjusted for your needs
-
-3. **Check model performance:**
-   Different models have different capabilities. Qwen3-14B works well, but you can try others.
+- [No Alerts in Discord](#no-alerts-in-discord)
+- [AI Analysis Not Working](#ai-analysis-not-working)
+- [Threat Hunter Issues](#threat-hunter-issues)
+- [MCP Server Issues](#mcp-server-issues)
+- [pfSense Quarantine Not Working](#pfsense-quarantine-not-working)
+- [n8n Webhook Issues](#n8n-webhook-issues)
+- [High CPU/Memory Usage](#high-cpumemory-usage)
 
 ---
 
-## Wazuh Agent Issues
+## No Alerts in Discord
 
-### Agent Not Connecting
+### Check integration scripts are properly installed
 
-**Symptoms:**
 ```bash
-/var/ossec/bin/agent_control -l
-# Shows agent as "Disconnected"
+# Verify scripts exist and have correct permissions
+ls -la /var/ossec/integrations/custom-*
+
+# Expected output:
+# -rwxr-x--- root wazuh custom-ai-dns-discord
+# -rwxr-x--- root wazuh custom-ai-dns-discord.py
+# -rwxr-x--- root wazuh custom-pfsense-ai-discord
+# -rwxr-x--- root wazuh custom-pfsense-ai-discord.py
+# -rwxr-x--- root wazuh custom-ssh-discord
+# -rwxr-x--- root wazuh custom-ssh-discord.py
 ```
 
-**Solutions:**
+### Check debug logs
 
-1. **Check agent status:**
-   ```bash
-   # On pfSense
-   /var/ossec/bin/wazuh-control status
-   ```
+```bash
+# DNS integration
+cat /tmp/ai-dns-debug.log | tail -50
 
-2. **Verify manager address:**
-   ```bash
-   cat /var/ossec/etc/ossec.conf | grep -A5 "<server>"
-   ```
+# pfSense integration  
+cat /tmp/pfsense-ai-debug.log | tail -50
 
-3. **Check network connectivity:**
-   ```bash
-   # From pfSense
-   nc -zv WAZUH_MANAGER_IP 1514
-   ```
-
-4. **Review agent logs:**
-   ```bash
-   tail -50 /var/ossec/logs/ossec.log
-   ```
-
-5. **Re-register agent:**
-   ```bash
-   # On Wazuh Manager
-   /var/ossec/bin/manage_agents -l
-   /var/ossec/bin/manage_agents -r AGENT_ID
-   
-   # Re-add agent
-   /var/ossec/bin/manage_agents -a
-   ```
-
-### Agent Key Mismatch
-
-**Symptoms:**
-```
-ERROR: Unable to verify server certificate
+# SSH integration
+cat /tmp/ssh-discord-debug.log | tail -50
 ```
 
-**Solutions:**
+### Test Discord webhook manually
 
-1. **Re-extract and import key:**
-   ```bash
-   # On Manager
-   /var/ossec/bin/manage_agents -e AGENT_ID
-   
-   # On Agent (pfSense)
-   /var/ossec/bin/manage_agents -i "KEY_STRING"
-   
-   # Restart agent
-   /var/ossec/bin/wazuh-control restart
-   ```
+```bash
+curl -X POST "YOUR_DISCORD_WEBHOOK_URL" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Test message from Wazuh"}'
+```
 
----
+### Verify integration is configured in ossec.conf
 
-## Log Forwarding Issues
+```bash
+sudo grep -A5 "custom-ai-dns-discord\|custom-pfsense-ai-discord\|custom-ssh-discord" /var/ossec/etc/ossec.conf
+```
 
-### No pfSense Logs in Wazuh
+### Check Wazuh integration logs
 
-**Solutions:**
-
-1. **Verify syslog is enabled on pfSense:**
-   - Status → System Logs → Settings
-   - Enable "Send log messages to remote syslog server"
-   - Remote log server: `WAZUH_IP:514`
-
-2. **Check Wazuh is listening:**
-   ```bash
-   # On Wazuh server
-   docker exec wazuh.manager ss -ulnp | grep 514
-   ```
-
-3. **Test syslog manually:**
-   ```bash
-   # From any machine
-   echo "<14>Test message" | nc -u WAZUH_IP 514
-   
-   # Check archives
-   docker exec wazuh.manager tail /var/ossec/logs/archives/archives.log
-   ```
-
-4. **Check firewall rules:**
-   Ensure UDP 514 is allowed to Wazuh VM
-
-### Logs Arriving But Not Decoded
-
-**Symptoms:**
-- Logs appear in archives but not as alerts
-- No `srcip` or `dstip` fields extracted
-
-**Solutions:**
-
-1. **Test decoder:**
-   ```bash
-   docker exec wazuh.manager /var/ossec/bin/wazuh-logtest
-   # Paste a sample pfSense log line
-   ```
-
-2. **Check decoder is loaded:**
-   ```bash
-   docker exec wazuh.manager ls /var/ossec/etc/decoders/
-   # Should see pfsense-decoder.xml
-   ```
-
-3. **Restart manager after adding decoders:**
-   ```bash
-   docker restart wazuh.manager
-   ```
+```bash
+sudo tail -f /var/ossec/logs/integrations.log
+```
 
 ---
 
-## Active Response Issues
+## AI Analysis Not Working
 
-### Active Response Not Triggering
+### Check LMStudio/Ollama is running
 
-**Solutions:**
+```bash
+curl http://10.10.0.136:1234/v1/models
+# Should return list of models
+```
 
-1. **Verify configuration:**
-   ```bash
-   docker exec wazuh.manager cat /var/ossec/etc/ossec.conf | grep -A20 "active-response"
-   ```
+### Check network connectivity from Wazuh to AI server
 
-2. **Check agent ID is correct:**
-   ```bash
-   docker exec wazuh.manager /var/ossec/bin/agent_control -l
-   # Note your pfSense agent ID
-   ```
+```bash
+curl -X POST http://10.10.0.136:1234/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"qwen/qwen3-14b","messages":[{"role":"user","content":"hello"}],"max_tokens":10}'
+```
 
-3. **Verify script exists on agent:**
-   ```bash
-   # On pfSense
-   ls -la /var/ossec/active-response/bin/ai-firewall-block.sh
-   ```
+### Check firewall rules
 
-4. **Check script permissions:**
-   ```bash
-   chmod 750 /var/ossec/active-response/bin/ai-firewall-block.sh
-   chown root:wheel /var/ossec/active-response/bin/ai-firewall-block.sh
-   ```
+Make sure port 1234 is open between Wazuh and LMStudio servers.
 
-5. **Test script manually:**
-   ```bash
-   echo '{"parameters":{"alert":{"data":{"srcip":"1.2.3.4","dstport":"22"},"rule":{"id":"110002","level":"10","description":"Test"}}}}' | /var/ossec/active-response/bin/ai-firewall-block.sh
-   ```
+### Test AI from integration script
 
-### IPs Not Being Blocked
+```bash
+# Create test alert
+cat > /tmp/test.alert << 'EOF'
+{
+  "timestamp": "2026-02-01T12:00:00.000+0000",
+  "rule": {"level": 5, "id": "111001"},
+  "data": {"QH": "test-domain.xyz", "IP": "10.10.0.100", "IsFiltered": "false"}
+}
+EOF
 
-**Solutions:**
+# Run DNS integration manually
+sudo python3 /var/ossec/integrations/custom-ai-dns-discord.py /tmp/test.alert
 
-1. **Check pfctl table:**
-   ```bash
-   pfctl -t snort2c -T show
-   ```
-
-2. **Manually test blocking:**
-   ```bash
-   pfctl -t snort2c -T add 1.2.3.4
-   pfctl -t snort2c -T show
-   pfctl -t snort2c -T delete 1.2.3.4
-   ```
-
-3. **Verify jq is installed:**
-   ```bash
-   which jq
-   # Should show /usr/local/bin/jq
-   
-   # If not:
-   pkg install -y jq
-   ```
-
-4. **Check logs:**
-   ```bash
-   tail -20 /var/ossec/logs/active-responses.log
-   tail -20 /var/ossec/logs/ai-decisions.log
-   ```
+# Check result
+cat /tmp/ai-dns-debug.log | tail -20
+```
 
 ---
 
-## Grafana Issues
+## Threat Hunter Issues
 
-### Cannot Connect to OpenSearch
+### Service not starting
 
-**Symptoms:**
-- Data source test fails
-- "Bad Gateway" or "Connection refused"
+```bash
+# Check service status
+sudo systemctl status wazuh-threat-hunter
 
-**Solutions:**
+# Check logs
+sudo journalctl -u wazuh-threat-hunter -f
 
-1. **Verify Wazuh Indexer is running:**
-   ```bash
-   docker ps | grep indexer
-   curl -k -u admin:PASSWORD https://localhost:9200
-   ```
+# Common issue: missing dependencies
+sudo /opt/threat-hunter-venv/bin/pip install --upgrade \
+  langchain langchain-community langchain-huggingface \
+  faiss-cpu sentence-transformers
+```
 
-2. **Check Grafana network:**
-   ```bash
-   # Grafana must be on same Docker network
-   docker network inspect wazuh-network
-   ```
+### Vector store not loading
 
-3. **Use correct URL:**
-   - From Grafana container: `https://wazuh.indexer:9200`
-   - With SSL verification disabled
+```bash
+# Check if archives exist
+ls -la /var/ossec/logs/archives/
 
-4. **Check credentials:**
-   - Username: `admin`
-   - Password: Your INDEXER_PASSWORD
+# Check archive content
+head -5 /var/ossec/logs/archives/archives.json
 
-### No Data in Dashboards
+# If empty, enable archive logging:
+sudo sed -i 's/<logall>no/<logall>yes/g' /var/ossec/etc/ossec.conf
+sudo sed -i 's/<logall_json>no/<logall_json>yes/g' /var/ossec/etc/ossec.conf
+sudo systemctl restart wazuh-manager
+```
 
-**Solutions:**
+### Slow query responses
 
-1. **Check time range:**
-   - Default is "Last 24 hours"
-   - Adjust if needed
+The initial vector store build takes 3-5 minutes for ~3000 documents. This is normal. Subsequent queries should be faster.
 
-2. **Verify index pattern:**
-   - Should be `wazuh-alerts-*`
-
-3. **Check indices exist:**
-   ```bash
-   curl -k -u admin:PASSWORD https://localhost:9200/_cat/indices | grep wazuh
-   ```
-
-4. **Generate test data:**
-   Trigger a rule manually to create alerts
+```bash
+# Check stats
+curl http://localhost:8080/stats
+```
 
 ---
 
-## Performance Issues
+## MCP Server Issues
 
-### High CPU on Wazuh Manager
+### Authentication failing
 
-**Solutions:**
+```bash
+# Find correct Wazuh API password
+sudo grep "password" /usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
 
-1. **Increase resources:**
-   Edit docker-compose.yml:
-   ```yaml
-   wazuh.manager:
-     deploy:
-       resources:
-         limits:
-           cpus: '2'
-           memory: 4G
-   ```
+# Update MCP server with correct password
+sudo nano /opt/wazuh-mcp/server.py
+# Change WAZUH_PASS value
 
-2. **Reduce log volume:**
-   - Filter logs at pfSense level
-   - Increase frequency thresholds in rules
+# Restart
+sudo systemctl restart wazuh-mcp
+```
 
-### High Memory on Wazuh Indexer
+### Test MCP endpoints
 
-**Solutions:**
+```bash
+# Status
+curl http://localhost:8081/
 
-1. **Adjust Java heap:**
-   ```yaml
-   environment:
-     - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
-   ```
+# Agents
+curl http://localhost:8081/agents
 
-2. **Configure index retention:**
-   Delete old indices:
-   ```bash
-   curl -k -u admin:PASSWORD -X DELETE "https://localhost:9200/wazuh-alerts-4.x-2024.01.*"
-   ```
+# Alerts summary  
+curl http://localhost:8081/alerts/summary
+```
 
-### Slow AI Responses
+### Web UI not loading
 
-**Solutions:**
+```bash
+# Check if server is running
+sudo systemctl status wazuh-mcp
 
-1. **Use faster model:**
-   - Qwen3-8B instead of 14B
-   - Or any smaller model
+# Test UI endpoint
+curl http://localhost:8081/ui | head -20
+```
 
-2. **Increase timeout:**
-   Edit script: `-m 30` instead of `-m 15`
+---
 
-3. **Reduce max_tokens:**
-   Edit script: `"max_tokens":80` instead of 120
+## pfSense Quarantine Not Working
+
+### Test SSH connection
+
+```bash
+# Test SSH key auth
+ssh -i /etc/ssh/pfsense_automation -p 2020 admin@10.10.0.1 "echo success"
+
+# If fails, regenerate key:
+sudo ssh-keygen -t ed25519 -f /etc/ssh/pfsense_automation -N ""
+cat /etc/ssh/pfsense_automation.pub
+# Add to pfSense: System > User Manager > admin > Authorized Keys
+```
+
+### Test quarantine script manually
+
+```bash
+# Test block (use a test IP)
+sudo /usr/local/bin/pfsense-quarantine.sh block 192.168.99.99 "test"
+
+# List quarantined IPs
+sudo /usr/local/bin/pfsense-quarantine.sh list
+
+# Unblock
+sudo /usr/local/bin/pfsense-quarantine.sh unblock 192.168.99.99
+```
+
+### Check protected IPs
+
+```bash
+# Make sure you're not trying to quarantine a protected IP
+grep "PROTECTED_IPS" /usr/local/bin/pfsense-quarantine.sh
+```
+
+### Verify pfSense quarantine table exists
+
+On pfSense:
+1. Go to Firewall > Aliases > Tables
+2. Ensure "quarantine" table exists
+3. Check Firewall > Rules has block rule using this table
+
+---
+
+## n8n Webhook Issues
+
+### Webhook not responding
+
+```bash
+# Test webhook directly
+curl -X GET "https://n8n.yourserver.com/webhook/wazuh-quarantine?ip=test"
+```
+
+### SSH credential issues in n8n
+
+1. Go to n8n > Credentials
+2. Edit Wazuh Server credential
+3. Verify:
+   - Host: 10.10.0.27
+   - Port: 22
+   - Username: root (or wazuh-user)
+   - Authentication: SSH Key
+   - Private Key: contents of /etc/ssh/pfsense_automation
+
+### Workflow not triggering
+
+1. Check workflow is activated (green toggle)
+2. Check webhook URL matches what's in Discord alert
+3. Check n8n execution logs
+
+---
+
+## High CPU/Memory Usage
+
+### Wazuh Manager
+
+```bash
+# Check log volume
+sudo wc -l /var/ossec/logs/alerts/alerts.json
+
+# If too many alerts, tune rules:
+# - Increase threshold levels
+# - Add more suppression rules
+```
+
+### Threat Hunter
+
+```bash
+# Reduce vector store size by limiting hours
+# Edit /var/ossec/integrations/threat_hunter.py
+# Change default hours from 24 to 12 or 6
+
+# Restart
+sudo systemctl restart wazuh-threat-hunter
+```
+
+### LMStudio
+
+- Reduce context window size
+- Use a smaller model (e.g., 7B instead of 14B)
+- Enable GPU offloading if available
+
+---
+
+## Quick Diagnostic Commands
+
+```bash
+# All services status
+echo "=== Wazuh Manager ===" && sudo systemctl is-active wazuh-manager
+echo "=== Threat Hunter ===" && sudo systemctl is-active wazuh-threat-hunter  
+echo "=== MCP Server ===" && sudo systemctl is-active wazuh-mcp
+
+# Check open ports
+sudo ss -tlnp | grep -E "8080|8081|55000|1514|514"
+
+# Recent Wazuh alerts
+sudo tail -20 /var/ossec/logs/alerts/alerts.log
+
+# Integration errors
+sudo grep -i error /var/ossec/logs/integrations.log | tail -20
+```
 
 ---
 
 ## Getting Help
 
-If you're still stuck:
-
-1. **Check Wazuh documentation:** https://documentation.wazuh.com
-2. **Wazuh GitHub issues:** https://github.com/wazuh/wazuh/issues
-3. **Wazuh Slack community:** https://wazuh.com/community/
-
-When reporting issues, include:
-- Wazuh version (`docker exec wazuh.manager cat /var/ossec/etc/ossec-init.conf`)
-- Relevant log excerpts
-- Steps to reproduce
+1. Check the [docs/SETUP.md](SETUP.md) for installation issues
+2. Review debug logs in `/tmp/*.log`
+3. Open an issue on GitHub with:
+   - Error messages
+   - Debug log output
+   - Steps to reproduce

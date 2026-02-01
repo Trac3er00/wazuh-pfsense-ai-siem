@@ -1,344 +1,372 @@
-# 🛡️ Wazuh + pfSense + AI-Powered SIEM
+# 🛡️ Wazuh AI-Powered SIEM Stack
 
-A complete home lab security monitoring stack with AI-enhanced threat detection and automated incident response.
+A comprehensive Security Information and Event Management (SIEM) solution combining **Wazuh** with **AI-powered threat analysis**, **automated response actions**, and **natural language log querying**.
 
-## 🎯 Overview
+![Wazuh](https://img.shields.io/badge/Wazuh-4.14.2-blue)
+![Python](https://img.shields.io/badge/Python-3.10+-green)
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
-This project implements a comprehensive security monitoring solution that combines:
+## 🌟 Features
 
-- **Wazuh SIEM** - Security Information and Event Management
-- **pfSense Firewall** - Network perimeter security with log forwarding
-- **Local AI (LM Studio)** - Intelligent threat analysis using Qwen3-14B
-- **Grafana** - Real-time security dashboards
-- **Automated Active Response** - AI-powered IP blocking with failsafe
+- **AI-Powered Threat Analysis** - Uses local LLM (LMStudio/Ollama) to analyze DNS queries, firewall blocks, and security events
+- **Natural Language Log Search** - Query your security logs with plain English ("Were there any SSH attacks today?")
+- **Multi-Source Monitoring** - AdGuard DNS, pfSense firewall, SSH authentication
+- **Discord Alerts** - Real-time security notifications with one-click response actions
+- **Automated Response** - Quarantine devices via pfSense firewall with n8n workflows
+- **Custom Dashboard** - Pre-configured Wazuh visualizations for security overview
+- **Noise Reduction** - Smart filtering to only alert on real threats
 
-## 🏗️ Architecture
+## 📐 Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              NETWORK                                         │
-│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐              │
-│  │   Internet   │──────│   pfSense    │──────│   LAN/DMZ    │              │
-│  │              │      │  (Firewall)  │      │   Devices    │              │
-│  └──────────────┘      └──────┬───────┘      └──────────────┘              │
-│                               │                                             │
-│                               │ Syslog (UDP 514)                           │
-│                               │ Wazuh Agent                                │
-│                               ▼                                             │
-│  ┌──────────────────────────────────────────────────────────────┐          │
-│  │                    WAZUH VM (Proxmox)                        │          │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │          │
-│  │  │   Wazuh     │  │   Wazuh     │  │   Wazuh     │          │          │
-│  │  │   Manager   │  │  Indexer    │  │  Dashboard  │          │          │
-│  │  │   :1514     │  │   :9200     │  │   :443      │          │          │
-│  │  └─────────────┘  └──────┬──────┘  └─────────────┘          │          │
-│  │                          │                                   │          │
-│  │                   ┌──────▼──────┐                           │          │
-│  │                   │   Grafana   │                           │          │
-│  │                   │    :3000    │                           │          │
-│  │                   └─────────────┘                           │          │
-│  └──────────────────────────────────────────────────────────────┘          │
-│                               │                                             │
-│                               │ API Call                                   │
-│                               ▼                                             │
-│  ┌──────────────────────────────────────────────────────────────┐          │
-│  │                    MAC (LM Studio)                           │          │
-│  │                   Qwen3-14B Model                            │          │
-│  │                      :1234                                   │          │
-│  └──────────────────────────────────────────────────────────────┘          │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           WAZUH SERVER (10.10.0.27)                     │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │
+│  │   Wazuh     │  │   Threat    │  │    MCP      │  │   Discord   │    │
+│  │   Manager   │  │   Hunter    │  │   Server    │  │   Alerts    │    │
+│  │   :55000    │  │   :8080     │  │   :8081     │  │             │    │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘    │
+│         │                │                │                │           │
+│         └────────────────┴────────────────┴────────────────┘           │
+│                                   │                                     │
+└───────────────────────────────────┼─────────────────────────────────────┘
+                                    │
+        ┌───────────────────────────┼───────────────────────────┐
+        │                           │                           │
+        ▼                           ▼                           ▼
+┌───────────────┐          ┌───────────────┐          ┌───────────────┐
+│   AdGuard     │          │   pfSense     │          │   LMStudio    │
+│   DNS Agent   │          │   Firewall    │          │   AI Server   │
+│  10.10.0.35   │          │  10.10.0.1    │          │  10.10.0.136  │
+│   (Agent)     │          │   (Syslog)    │          │   (Qwen 14B)  │
+└───────────────┘          └───────────────┘          └───────────────┘
+                                    │
+                                    ▼
+                           ┌───────────────┐
+                           │     n8n       │
+                           │  Automation   │
+                           │  (Webhooks)   │
+                           └───────────────┘
 ```
-
-## ✨ Features
-
-### 🔍 Log Collection & Analysis
-- Real-time pfSense firewall log ingestion via syslog
-- Custom decoders for pfSense filterlog format
-- Field extraction: source/dest IP, ports, protocol, interface, action
-
-### 🤖 AI-Powered Threat Detection
-- Local LLM integration (Qwen3-14B via LM Studio)
-- Intelligent blocking decisions based on threat severity
-- Automatic failsafe when AI is unreachable
-- No cloud dependencies - 100% local processing
-
-### ⚡ Automated Active Response
-- Dynamic IP blocking with configurable durations:
-  - **Level 0-6 (Low)**: No block
-  - **Level 7-9 (Medium)**: 5 minute block
-  - **Level 10-11 (High)**: 15 minute block  
-  - **Level 12-15 (Critical)**: 1 hour block
-- Sensitive port detection (SSH, RDP, databases)
-- Automatic unblock after timeout
-
-### 📊 Real-Time Dashboards
-- Grafana dashboards with OpenSearch data source
-- Visualizations: alerts over time, top attackers, targeted ports
-- Auto-refresh every 30 seconds
-
-## 📋 Prerequisites
-
-- **Proxmox VE** (or any hypervisor)
-- **pfSense** firewall (2.7.x recommended)
-- **Docker & Docker Compose**
-- **LM Studio** (for local AI) - [Download](https://lmstudio.ai/)
-- Minimum 8GB RAM for Wazuh VM
-- Minimum 16GB RAM for AI workstation
 
 ## 🚀 Quick Start
 
-### Phase 1: Deploy Wazuh
+### Prerequisites
+
+- Ubuntu 24.04 server (6+ cores, 16GB+ RAM recommended)
+- Wazuh 4.14+ installed
+- pfSense firewall with SSH access
+- AdGuard Home DNS server
+- LMStudio or Ollama for AI inference
+- n8n for workflow automation
+- Discord webhook for alerts
+
+### Installation
 
 ```bash
-# Clone Wazuh Docker repository
-git clone https://github.com/wazuh/wazuh-docker.git
-cd wazuh-docker/single-node
+# Clone the repository
+git clone https://github.com/Trac3er00/wazuh-ai-siem.git
+cd wazuh-ai-siem
 
-# Generate certificates
-docker compose -f generate-indexer-certs.yml run --rm generator
-
-# Start the stack
-docker compose up -d
+# Run the setup script
+chmod +x scripts/setup.sh
+sudo ./scripts/setup.sh
 ```
 
-Access Wazuh Dashboard: `https://YOUR_IP:443`
-- Username: `admin`
-- Password: `SecretPassword` (change this!)
-
-### Phase 2: Configure pfSense Log Forwarding
-
-1. **Enable Remote Syslog** in pfSense:
-   - Status → System Logs → Settings
-   - Enable "Send log messages to remote syslog server"
-   - Remote log server: `YOUR_WAZUH_IP:514`
-   - Check: Firewall Events
-
-2. **Install Wazuh Agent** on pfSense:
-   ```bash
-   # SSH to pfSense
-   pkg install -y wazuh-agent
-   
-   # Configure agent
-   cat > /var/ossec/etc/ossec.conf << 'EOF'
-   <ossec_config>
-     <client>
-       <server>
-         <address>YOUR_WAZUH_MANAGER_IP</address>
-         <port>1514</port>
-         <protocol>tcp</protocol>
-       </server>
-     </client>
-   </ossec_config>
-   EOF
-   
-   # Start agent
-   /var/ossec/bin/wazuh-control start
-   ```
-
-### Phase 3: Deploy AI-Enhanced Active Response
-
-1. **Copy the script to pfSense**:
-   ```bash
-   scp -P 22 scripts/ai-firewall-block.sh admin@PFSENSE_IP:/var/ossec/active-response/bin/
-   ```
-
-2. **Set permissions**:
-   ```bash
-   chmod 750 /var/ossec/active-response/bin/ai-firewall-block.sh
-   chown root:wheel /var/ossec/active-response/bin/ai-firewall-block.sh
-   ```
-
-3. **Install jq** (required for JSON parsing):
-   ```bash
-   pkg install -y jq
-   ```
-
-4. **Configure Wazuh Manager**:
-   ```bash
-   # Add to ossec.conf before </ossec_config>
-   docker exec -i wazuh.manager bash -c 'cat >> /var/ossec/etc/ossec.conf << "EOF"
-   
-     <!-- AI-Enhanced Active Response -->
-     <command>
-       <name>ai-firewall-block</name>
-       <executable>ai-firewall-block.sh</executable>
-       <timeout_allowed>yes</timeout_allowed>
-     </command>
-   
-     <active-response>
-       <command>ai-firewall-block</command>
-       <location>defined-agent</location>
-       <agent_id>002</agent_id>
-       <rules_id>110002</rules_id>
-     </active-response>
-   EOF'
-   
-   # Restart manager
-   docker restart wazuh.manager
-   ```
-
-### Phase 4: Setup Grafana
-
-1. **Add Grafana to docker-compose.yml**:
-   ```yaml
-   grafana:
-     image: grafana/grafana:11.5.1
-     container_name: grafana
-     ports:
-       - "3000:3000"
-     environment:
-       - GF_SECURITY_ADMIN_PASSWORD=YourSecurePassword
-     volumes:
-       - grafana-data:/var/lib/grafana
-     networks:
-       - wazuh-network
-   ```
-
-2. **Start Grafana**:
-   ```bash
-   docker compose up -d grafana
-   ```
-
-3. **Configure OpenSearch Data Source**:
-   - URL: `https://wazuh.indexer:9200`
-   - Basic Auth: `admin` / `YOUR_INDEXER_PASSWORD`
-   - Skip TLS Verify: enabled
-
-## 📁 Project Structure
+## 📁 Repository Structure
 
 ```
-wazuh-pfsense-ai-siem/
-├── README.md
-├── LICENSE
-├── docker-compose.yml
+wazuh-ai-siem/
+├── README.md                          # This file
+├── docs/
+│   ├── SETUP.md                       # Detailed setup guide
+│   ├── CONFIGURATION.md               # Configuration reference
+│   └── TROUBLESHOOTING.md             # Common issues and fixes
+├── integrations/
+│   ├── custom-ai-dns-discord.py       # AI-powered DNS analysis
+│   ├── custom-pfsense-ai-discord.py   # AI-powered firewall analysis
+│   └── custom-ssh-discord.py          # SSH alert integration
+├── rules/
+│   ├── local_rules.xml                # Noise reduction rules
+│   ├── pfsense_custom_rules.xml       # pfSense detection rules
+│   └── local_adguard_rules.xml        # AdGuard DNS rules
+├── decoders/
+│   └── adguard_decoder.xml            # AdGuard log decoder
 ├── scripts/
-│   └── ai-firewall-block.sh      # AI-enhanced active response
-├── wazuh-config/
-│   ├── decoders/
-│   │   └── pfsense-decoder.xml   # Custom pfSense log decoder
-│   ├── rules/
-│   │   └── pfsense-rules.xml     # Custom detection rules
-│   └── ossec.conf.example        # Manager configuration
-├── grafana/
-│   └── dashboards/
-│       └── pfsense-security.json # Pre-built dashboard
-└── docs/
-    ├── images/
-    └── troubleshooting.md
+│   ├── setup.sh                       # Main setup script
+│   ├── pfsense-quarantine.sh          # pfSense quarantine script
+│   └── test-integrations.sh           # Integration test script
+├── services/
+│   ├── threat_hunter.py               # AI Threat Hunter service
+│   ├── mcp_server.py                  # MCP/Chat API server
+│   ├── wazuh-threat-hunter.service    # Systemd service
+│   └── wazuh-mcp.service              # Systemd service
+├── n8n-workflows/
+│   ├── wazuh-quarantine-workflow.json # Quarantine device workflow
+│   ├── wazuh-unquarantine-workflow.json # Release device workflow
+│   └── wazuh-ignore-workflow.json     # Ignore domain workflow
+└── config/
+    └── ossec.conf.example             # Example Wazuh configuration
 ```
 
-## 🔧 Configuration
+## 🔧 Components
 
-### AI Configuration (ai-firewall-block.sh)
+### 1. AI-Powered DNS Integration
+
+Analyzes DNS queries with AI to detect malicious domains.
+
+**Features:**
+- Skips already-blocked domains (no duplicate alerts)
+- Extensive safe pattern list (Amazon, Google, Apple, etc.)
+- User-configurable ignore list
+- Only alerts on critical/high threats
+
+**File:** `integrations/custom-ai-dns-discord.py`
+
+### 2. AI-Powered pfSense Integration
+
+Analyzes firewall blocks to identify real attacks vs noise.
+
+**Features:**
+- Triggered on 20+ blocks from same IP in 1 minute
+- AI classifies attack type (port scan, brute force, etc.)
+- Fallback alerts when AI unavailable
+- Quarantine button in Discord
+
+**File:** `integrations/custom-pfsense-ai-discord.py`
+
+### 3. SSH Monitoring
+
+Detects SSH brute force attacks and suspicious logins.
+
+**Features:**
+- Alerts on 5+ failed attempts (brute force)
+- Shows source IP, username, target
+- One-click quarantine
+
+**File:** `integrations/custom-ssh-discord.py`
+
+### 4. AI Threat Hunter
+
+Natural language security log search powered by LLM + vector database.
+
+**Features:**
+- Query logs with plain English
+- FAISS vector store for semantic search
+- REST API at port 8080
+
+**Example queries:**
+- "Were there any SSH brute force attacks?"
+- "Show me blocked DNS queries from yesterday"
+- "What IPs triggered the most alerts?"
+
+**File:** `services/threat_hunter.py`
+
+### 5. MCP Server / Chat API
+
+REST API and web interface for SIEM interaction.
+
+**Features:**
+- List agents, alerts, summaries
+- Natural language chat endpoint
+- Web UI at `/ui`
+
+**File:** `services/mcp_server.py`
+
+### 6. n8n Automation Workflows
+
+Automated response actions triggered from Discord.
+
+| Workflow | Webhook | Action |
+|----------|---------|--------|
+| Quarantine | `/wazuh-quarantine` | Block IP on pfSense |
+| Unquarantine | `/wazuh-unquarantine` | Release IP |
+| Ignore Domain | `/wazuh-ignore` | Add to safe list |
+
+## 📊 Dashboard
+
+Custom Wazuh dashboard visualizations:
+
+| Visualization | Type | Description |
+|---------------|------|-------------|
+| Alerts Over Time | Line | Timeline of all alert types |
+| Alerts by Category | Pie | Breakdown by source (DNS, SSH, pfSense) |
+| Alert Severity | Pie | Distribution by rule level |
+| Top Source IPs | Bar | Most active IPs |
+| Top Triggered Rules | Table | Most common alerts |
+
+## 🔐 Noise Reduction
+
+Built-in rules to suppress routine events:
+
+| Event Type | Action |
+|------------|--------|
+| pfSense single blocks | Suppressed |
+| AdGuard blocked queries | Suppressed |
+| PAM session open/close | Suppressed |
+| Sudo by trusted users | Suppressed |
+| SSH from internal IPs | Suppressed |
+| SSH brute force | **Alerts at level 10** |
+| pfSense attacks (20+ blocks) | **Alerts at level 8+** |
+
+## 🌐 Endpoints
+
+| Service | Port | URL | Purpose |
+|---------|------|-----|---------|
+| Wazuh Dashboard | 443 | https://wazuh.local | Main SIEM UI |
+| Wazuh API | 55000 | https://wazuh.local:55000 | Wazuh REST API |
+| Threat Hunter | 8080 | http://wazuh.local:8080 | AI log search API |
+| MCP Server | 8081 | http://wazuh.local:8081 | Chat API |
+| Chat UI | 8081 | http://wazuh.local:8081/ui | Web chat interface |
+
+## 🔄 Alert Flow
+
+### DNS Alert Flow
+```
+DNS Query → AdGuard
+  ├── Blocked (IsFiltered=true)? → Skip (no alert)
+  └── Not blocked?
+        ├── Known safe pattern? → Skip
+        ├── User-ignored? → Skip
+        └── Unknown → AI Analysis
+              ├── Safe/tracking? → Skip
+              └── Malicious? → Discord Alert
+                    ├── [Quarantine] → Block IP
+                    └── [Ignore] → Add to safe list
+```
+
+### pfSense Alert Flow
+```
+pfSense Event → Wazuh Rules
+  ├── Level < 8? → Skip
+  └── Level 8+ (attack detected)?
+        → AI Analysis → Discord Alert
+              └── [Quarantine] → Block IP
+```
+
+### SSH Alert Flow
+```
+SSH Event → Wazuh Rules
+  ├── Single failure (level 4)? → Log only
+  └── Brute force (level 10)?
+        → Discord Alert
+              └── [Quarantine] → Block IP
+```
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+Create `/etc/wazuh-ai-siem.env`:
 
 ```bash
-# LM Studio endpoint
-AI_URL="http://YOUR_MAC_IP:1234/v1/chat/completions"
-AI_MODEL="qwen/qwen3-14b"
+# LMStudio/Ollama
+LMSTUDIO_URL=http://10.10.0.136:1234/v1/chat/completions
+LMSTUDIO_MODEL=qwen/qwen3-14b
 
-# Block durations (seconds)
-SHORT=300    # 5 minutes
-MEDIUM=900   # 15 minutes
-LONG=3600    # 1 hour
+# Discord
+DISCORD_WEBHOOK=https://discord.com/api/webhooks/YOUR_WEBHOOK_HERE
+
+# n8n
+N8N_BASE_URL=https://n8n.yourserver.com/webhook
+
+# pfSense
+PFSENSE_HOST=10.10.0.1
+PFSENSE_SSH_PORT=2020
+PFSENSE_SSH_KEY=/etc/ssh/pfsense_automation
+
+# Wazuh API
+WAZUH_API_USER=wazuh-wui
+WAZUH_API_PASS=your_api_password
 ```
 
-### Custom Detection Rules
+### Protected IPs
 
-```xml
-<!-- Port Scan Detection -->
-<rule id="110002" level="10" frequency="5" timeframe="60">
-  <if_matched_sid>110001</if_matched_sid>
-  <same_source_ip />
-  <description>pfSense: Possible port scan detected from $(srcip)</description>
-  <group>pfsense,attack,scan</group>
-</rule>
+Edit `scripts/pfsense-quarantine.sh` to add IPs that should never be quarantined:
+
+```bash
+PROTECTED_IPS=("10.10.0.1" "10.10.0.27" "10.10.0.35" "10.10.0.167" "127.0.0.1")
 ```
 
-## 📊 Dashboard Panels
+### Safe Domain Patterns
 
-| Panel | Description |
-|-------|-------------|
-| Total Alerts (24h) | Count of all security events |
-| Blocked Connections | Firewall block actions |
-| Unique Source IPs | Distinct attackers |
-| High Severity Alerts | Level 10+ events |
-| Active Agents | Connected Wazuh agents |
-| Firewall Events Over Time | Time series graph |
-| Top 10 Source IPs | Most active attackers |
-| Top 10 Destination Ports | Most targeted services |
-| Alerts by Severity | Distribution by level |
-| Recent High Severity | Alert details table |
+Edit the `KNOWN_SAFE_PATTERNS` in `integrations/custom-ai-dns-discord.py` or add domains to:
+
+```
+/var/ossec/etc/lists/ignored-domains.txt
+```
 
 ## 🧪 Testing
 
-### Test AI Decision Making
-
+### Test DNS Integration
 ```bash
-# Test Level 10 alert (should block 15min)
-echo '{"parameters":{"alert":{"data":{"srcip":"198.51.100.1","dstport":"22"},"rule":{"id":"110002","level":"10","description":"SSH scan"}}}}' | /var/ossec/active-response/bin/ai-firewall-block.sh
-
-# Check AI decision log
-tail -10 /var/ossec/logs/ai-decisions.log
-
-# Verify block
-pfctl -t snort2c -T show
+# Trigger a test alert
+sudo python3 /var/ossec/integrations/custom-ai-dns-discord.py /tmp/test.alert
+cat /tmp/ai-dns-debug.log
 ```
 
-### Test Fallback Mode
-
+### Test pfSense Integration
 ```bash
-# Stop LM Studio, then run test
-# Should show "AI down, using fallback"
-tail -5 /var/ossec/logs/ai-decisions.log
+# Create test alert
+cat > /tmp/test-pfsense.alert << 'EOF'
+{
+  "timestamp": "2026-02-01T18:40:00.000+0000",
+  "rule": {"level": 11, "id": "112011"},
+  "data": {"srcip": "185.220.101.45", "dstip": "10.10.0.27", "dstport": "22"}
+}
+EOF
+
+sudo python3 /var/ossec/integrations/custom-pfsense-ai-discord.py /tmp/test-pfsense.alert
 ```
 
-## 🔒 Security Hardening
-
-**Important**: Change all default passwords!
-
+### Test SSH Brute Force Detection
 ```bash
-# Grafana
-docker exec -it grafana grafana-cli admin reset-admin-password 'NewSecurePassword!'
-
-# Wazuh Indexer - update in docker-compose.yml
-INDEXER_PASSWORD=NewSecurePassword
-
-# Generate secure passwords
-openssl rand -base64 24
+# From another machine, try 6 failed logins
+ssh fakeuser@wazuh-server
+# Enter wrong password 6 times
 ```
 
-## 🐛 Troubleshooting
+### Test Threat Hunter
+```bash
+curl -X POST http://localhost:8080/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Were there any SSH attacks?", "hours": 24}'
+```
 
-### AI Returns "UNREACHABLE"
-- Verify LM Studio is running with API server enabled
-- Check network connectivity: `curl -s http://MAC_IP:1234/v1/models`
-- Verify firewall allows traffic on port 1234
+### Test MCP Server
+```bash
+curl http://localhost:8081/agents
+curl http://localhost:8081/alerts/summary
+```
 
-### No Logs in Grafana
-- Check Wazuh Indexer: `curl -k -u admin:password https://localhost:9200/_cat/indices`
-- Verify time range in Grafana (default: Last 24 hours)
-- Check index pattern matches `wazuh-alerts-*`
+## 📝 Logs & Debugging
 
-### Active Response Not Triggering
-- Verify agent is connected: `/var/ossec/bin/agent_control -l`
-- Check ossec.conf has correct agent_id
-- Review manager logs: `docker logs wazuh.manager`
+| Log | Location |
+|-----|----------|
+| DNS Integration | `/tmp/ai-dns-debug.log` |
+| pfSense Integration | `/tmp/pfsense-ai-debug.log` |
+| SSH Integration | `/tmp/ssh-discord-debug.log` |
+| Threat Hunter | `journalctl -u wazuh-threat-hunter` |
+| MCP Server | `journalctl -u wazuh-mcp` |
+| Wazuh Alerts | `/var/ossec/logs/alerts/alerts.log` |
+| Wazuh Archives | `/var/ossec/logs/archives/archives.json` |
 
-## 📝 License
+## 🤝 Contributing
 
-MIT License - See [LICENSE](LICENSE) for details.
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
-- [Wazuh](https://wazuh.com/) - Open source security platform
+- [Wazuh](https://wazuh.com/) - Open source SIEM/XDR platform
+- [LMStudio](https://lmstudio.ai/) - Local LLM inference
+- [n8n](https://n8n.io/) - Workflow automation
 - [pfSense](https://www.pfsense.org/) - Open source firewall
-- [LM Studio](https://lmstudio.ai/) - Local LLM runner
-- [Grafana](https://grafana.com/) - Observability platform
+- [AdGuard Home](https://adguard.com/en/adguard-home/overview.html) - DNS server
 
 ## 📧 Contact
 
-Created by [@cminseo](https://github.com/cminseo) - Feel free to reach out!
-
----
-
-⭐ **Star this repo if you found it helpful!**
+Created by [@Trac3er00](https://github.com/Trac3er00)

@@ -1,0 +1,45 @@
+<!-- 
+  Wazuh AI SIEM - AdGuard DNS Decoder
+  Location: /var/ossec/etc/decoders/adguard_decoder.xml
+  
+  Parses AdGuard Home query logs (JSON format)
+  Extracts: domain (QH), query type (QT), client IP, filtered status, rules
+  
+  Author: @Trac3er00
+-->
+
+<decoder name="adguard">
+  <program_name>^AdGuardHome</program_name>
+</decoder>
+
+<decoder name="adguard-querylog">
+  <parent>adguard</parent>
+  <prematch>querylog</prematch>
+  <regex type="pcre2">"QH":"([^"]+)".*"QT":"([^"]+)".*"IP":"([^"]+)"</regex>
+  <order>QH,QT,IP</order>
+</decoder>
+
+<decoder name="adguard-filtered">
+  <parent>adguard</parent>
+  <regex type="pcre2">"IsFiltered":(true|false)</regex>
+  <order>IsFiltered</order>
+</decoder>
+
+<decoder name="adguard-rules">
+  <parent>adguard</parent>
+  <regex type="pcre2">"Rules":\[(\{[^\]]+\})\]</regex>
+  <order>Rules</order>
+</decoder>
+
+<!-- Alternative decoder for JSON log format -->
+<decoder name="adguard-json">
+  <prematch type="pcre2">\{"T":|"QH":</prematch>
+  <regex type="pcre2">"QH":"([^"]+)"</regex>
+  <order>QH</order>
+</decoder>
+
+<decoder name="adguard-json-details">
+  <parent>adguard-json</parent>
+  <regex type="pcre2">"QT":"([^"]+)".*"IP":"([^"]+)".*"IsFiltered":(true|false)</regex>
+  <order>QT,IP,IsFiltered</order>
+</decoder>

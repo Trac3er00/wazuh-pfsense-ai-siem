@@ -1,0 +1,68 @@
+<!-- 
+  Wazuh AI SIEM - AdGuard DNS Rules
+  Location: /var/ossec/etc/rules/local_adguard_rules.xml
+  
+  These rules detect DNS security events from AdGuard Home
+  Requires Wazuh agent installed on AdGuard server monitoring query logs
+  
+  Author: @Trac3er00
+-->
+
+<group name="local,adguard,dns,">
+
+  <!-- Base rule for all AdGuard DNS queries -->
+  <rule id="111000" level="3">
+    <decoded_as>adguard</decoded_as>
+    <description>AdGuard DNS: Query for $(QH) from $(IP)</description>
+    <group>adguard,dns,</group>
+  </rule>
+
+  <!-- Blocked query (by filter) -->
+  <rule id="111001" level="3">
+    <if_sid>111000</if_sid>
+    <field name="Result.IsFiltered">true</field>
+    <description>AdGuard DNS: Blocked query for $(QH) from $(IP)</description>
+    <group>adguard,dns_blocked,</group>
+  </rule>
+
+  <!-- Malware/Phishing blocks (higher severity) -->
+  <rule id="111002" level="7">
+    <if_sid>111001</if_sid>
+    <field name="Result.Rules.0.Text">malware|phishing|ransomware|trojan</field>
+    <description>AdGuard DNS: MALWARE/PHISHING block for $(QH) from $(IP)</description>
+    <group>adguard,dns_blocked,dns_malware,</group>
+  </rule>
+
+  <!-- Adult content blocks -->
+  <rule id="111003" level="3">
+    <if_sid>111001</if_sid>
+    <field name="Result.Rules.0.Text">adult|porn|nsfw</field>
+    <description>AdGuard DNS: Adult content blocked for $(QH) from $(IP)</description>
+    <group>adguard,dns_blocked,dns_adult,</group>
+  </rule>
+
+  <!-- Tracking/Ads blocks (low severity, informational) -->
+  <rule id="111004" level="2">
+    <if_sid>111001</if_sid>
+    <field name="Result.Rules.0.Text">ads|tracking|analytics|telemetry</field>
+    <description>AdGuard DNS: Ads/Tracking blocked for $(QH) from $(IP)</description>
+    <group>adguard,dns_blocked,dns_ads,</group>
+  </rule>
+
+  <!-- High volume queries from single IP (possible DNS tunneling) -->
+  <rule id="111010" level="8" frequency="100" timeframe="60">
+    <if_matched_sid>111000</if_matched_sid>
+    <same_source_ip />
+    <description>AdGuard DNS: High volume queries from $(IP) - possible DNS tunneling</description>
+    <group>adguard,dns,attack,</group>
+  </rule>
+
+  <!-- Queries to known bad TLDs -->
+  <rule id="111020" level="6">
+    <if_sid>111000</if_sid>
+    <regex>\.xyz$|\.top$|\.tk$|\.ml$|\.ga$|\.cf$|\.gq$</regex>
+    <description>AdGuard DNS: Query to suspicious TLD $(QH) from $(IP)</description>
+    <group>adguard,dns,suspicious,</group>
+  </rule>
+
+</group>

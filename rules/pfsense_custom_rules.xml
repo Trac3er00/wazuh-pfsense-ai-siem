@@ -1,0 +1,141 @@
+<!-- 
+  Wazuh AI SIEM - pfSense Custom Rules
+  Location: /var/ossec/etc/rules/pfsense_custom_rules.xml
+  
+  These rules detect attacks and security events from pfSense firewall
+  Requires syslog forwarding from pfSense to Wazuh on UDP 514
+  
+  Author: @Trac3er00
+-->
+
+<group name="local,syslog,pfsense,">
+
+  <!-- ============================================
+       AUTHENTICATION ALERTS
+       ============================================ -->
+  
+  <!-- Single authentication failure -->
+  <rule id="112000" level="5">
+    <if_group>pfsense</if_group>
+    <match>authentication error|auth failed|login failed</match>
+    <description>pfSense: Authentication failure</description>
+    <group>pfsense,authentication_failed,</group>
+  </rule>
+  
+  <!-- Brute force - 5+ failed logins in 2 minutes -->
+  <rule id="112001" level="10" frequency="5" timeframe="120">
+    <if_matched_sid>112000</if_matched_sid>
+    <same_source_ip />
+    <description>pfSense: Brute force attack detected (5+ failures in 2 min)</description>
+    <group>pfsense,authentication_failed,attack,</group>
+  </rule>
+  
+  <!-- Severe brute force - 10+ failed logins in 5 minutes -->
+  <rule id="112002" level="12" frequency="10" timeframe="300">
+    <if_matched_sid>112000</if_matched_sid>
+    <same_source_ip />
+    <description>pfSense: Severe brute force attack (10+ failures in 5 min)</description>
+    <group>pfsense,authentication_failed,attack,</group>
+  </rule>
+
+  <!-- ============================================
+       FIREWALL BLOCK AGGREGATION
+       ============================================ -->
+  
+  <!-- Base rule for firewall blocks (level 3 - informational) -->
+  <rule id="112005" level="3">
+    <if_group>pfsense</if_group>
+    <match>filterlog</match>
+    <description>pfSense: Blocked connection</description>
+    <group>pfsense,firewall,firewall_block,</group>
+  </rule>
+  
+  <!-- Port scan / attack - 20+ blocks in 1 minute from same source -->
+  <rule id="112010" level="8" frequency="20" timeframe="60">
+    <if_matched_sid>112005</if_matched_sid>
+    <same_source_ip />
+    <description>pfSense: Possible port scan or attack (20+ blocks in 1 min)</description>
+    <group>pfsense,firewall,attack,port_scan,</group>
+  </rule>
+  
+  <!-- Active attack - 50+ blocks in 2 minutes from same source -->
+  <rule id="112011" level="11" frequency="50" timeframe="120">
+    <if_matched_sid>112005</if_matched_sid>
+    <same_source_ip />
+    <description>pfSense: Active attack detected (50+ blocks in 2 min)</description>
+    <group>pfsense,firewall,attack,</group>
+  </rule>
+
+  <!-- ============================================
+       SSH ALERTS (for pfSense SSH access)
+       ============================================ -->
+  
+  <!-- SSH authentication failure -->
+  <rule id="112020" level="6">
+    <if_group>pfsense</if_group>
+    <match>sshd|Failed password|Invalid user</match>
+    <description>pfSense: SSH authentication failure</description>
+    <group>pfsense,sshd,authentication_failed,</group>
+  </rule>
+  
+  <!-- SSH brute force - 5+ failures in 2 minutes -->
+  <rule id="112021" level="10" frequency="5" timeframe="120">
+    <if_matched_sid>112020</if_matched_sid>
+    <same_source_ip />
+    <description>pfSense: SSH brute force attack (5+ failures in 2 min)</description>
+    <group>pfsense,sshd,authentication_failed,attack,</group>
+  </rule>
+
+  <!-- ============================================
+       VPN ALERTS
+       ============================================ -->
+  
+  <!-- VPN client connected -->
+  <rule id="112030" level="4">
+    <if_group>pfsense</if_group>
+    <match>openvpn|Peer Connection Initiated|client connected</match>
+    <description>pfSense: VPN client connected</description>
+    <group>pfsense,vpn,</group>
+  </rule>
+  
+  <!-- VPN authentication failed -->
+  <rule id="112031" level="6">
+    <if_group>pfsense</if_group>
+    <match>openvpn|AUTH_FAILED|TLS Error|Auth Failed</match>
+    <description>pfSense: VPN authentication failed</description>
+    <group>pfsense,vpn,authentication_failed,</group>
+  </rule>
+
+  <!-- ============================================
+       CONFIGURATION CHANGES
+       ============================================ -->
+  
+  <!-- Configuration change detected -->
+  <rule id="112040" level="8">
+    <if_group>pfsense</if_group>
+    <match>config.xml|configuration changed|settings modified</match>
+    <description>pfSense: Configuration change detected</description>
+    <group>pfsense,config_change,</group>
+  </rule>
+
+  <!-- ============================================
+       IDS/IPS ALERTS (Snort/Suricata)
+       ============================================ -->
+  
+  <!-- General IDS/IPS alert -->
+  <rule id="112050" level="7">
+    <if_group>pfsense</if_group>
+    <match>snort|suricata|ids alert|ips alert</match>
+    <description>pfSense: IDS/IPS alert triggered</description>
+    <group>pfsense,ids,</group>
+  </rule>
+  
+  <!-- IDS detected malware/exploit -->
+  <rule id="112051" level="10">
+    <if_sid>112050</if_sid>
+    <match>ET MALWARE|ET TROJAN|ET EXPLOIT</match>
+    <description>pfSense: IDS detected malware or exploit attempt</description>
+    <group>pfsense,ids,malware,</group>
+  </rule>
+
+</group>

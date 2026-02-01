@@ -1,0 +1,15 @@
+[Unit]
+Description=Wazuh MCP Server
+After=network.target wazuh-manager.service wazuh-threat-hunter.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/wazuh-mcp
+ExecStart=/opt/wazuh-mcp/venv/bin/python /opt/wazuh-mcp/server.py
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

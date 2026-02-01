@@ -1,0 +1,15 @@
+[Unit]
+Description=Wazuh AI Threat Hunter
+After=network.target wazuh-manager.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/ossec/integrations
+ExecStart=/opt/threat-hunter-venv/bin/python /var/ossec/integrations/threat_hunter.py
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

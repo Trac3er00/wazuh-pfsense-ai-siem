@@ -1,0 +1,85 @@
+{
+  "name": "Wazuh Unquarantine Device",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "wazuh-unquarantine",
+        "options": {}
+      },
+      "id": "webhook-unquarantine",
+      "name": "Unquarantine",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "wazuh-unquarantine"
+    },
+    {
+      "parameters": {
+        "command": "=/usr/local/bin/pfsense-quarantine.sh unblock {{ $json.query.ip }} \"Released via n8n\""
+      },
+      "id": "ssh-unquarantine",
+      "name": "SSH Unquarantine",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": {
+        "sshPassword": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Wazuh Server"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "YOUR_DISCORD_WEBHOOK_HERE",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"embeds\": [{\n    \"title\": \"🔓 Device Unquarantined\",\n    \"color\": 5763719,\n    \"fields\": [\n      {\"name\": \"IP Address\", \"value\": \"{{ $('Unquarantine').item.json.query.ip }}\", \"inline\": true},\n      {\"name\": \"Action\", \"value\": \"Removed from quarantine\", \"inline\": true},\n      {\"name\": \"Result\", \"value\": \"Device can now access the network\", \"inline\": false}\n    ],\n    \"footer\": {\"text\": \"Wazuh Security • n8n Automation\"},\n    \"timestamp\": \"{{ $now.toISO() }}\"\n  }]\n}",
+        "options": {}
+      },
+      "id": "discord-confirm-unquarantine",
+      "name": "Discord Confirm",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    }
+  ],
+  "connections": {
+    "Unquarantine": {
+      "main": [
+        [
+          {
+            "node": "SSH Unquarantine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SSH Unquarantine": {
+      "main": [
+        [
+          {
+            "node": "Discord Confirm",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
