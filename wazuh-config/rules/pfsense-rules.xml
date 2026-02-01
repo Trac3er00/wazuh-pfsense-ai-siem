@@ -1,0 +1,161 @@
+<!--
+  pfSense Custom Rules for Wazuh
+  
+  These rules detect security events from pfSense firewall logs:
+  - Blocked connections
+  - Port scans
+  - Brute force attempts
+  - Suspicious traffic patterns
+  
+  Place this file in: /var/ossec/etc/rules/
+  Then restart Wazuh Manager: systemctl restart wazuh-manager
+  
+  Rule ID Range: 110000-110999 (custom rules should be 100000+)
+-->
+
+<group name="pfsense,firewall,">
+
+  <!-- Base rule for pfSense filterlog events -->
+  <rule id="110000" level="0">
+    <decoded_as>pfsense-filterlog</decoded_as>
+    <description>pfSense filterlog event</description>
+  </rule>
+
+  <!-- Blocked connection (informational) -->
+  <rule id="110001" level="3">
+    <if_sid>110000</if_sid>
+    <field name="action">block</field>
+    <description>pfSense: Blocked connection from $(srcip) to $(dstip):$(dstport)</description>
+    <group>firewall_block,</group>
+  </rule>
+
+  <!-- Port scan detection (5+ blocked connections in 60 seconds) -->
+  <rule id="110002" level="10" frequency="5" timeframe="60">
+    <if_matched_sid>110001</if_matched_sid>
+    <same_source_ip />
+    <description>pfSense: Possible port scan detected from $(srcip)</description>
+    <mitre>
+      <id>T1046</id>
+    </mitre>
+    <group>attack,recon,port_scan,</group>
+  </rule>
+
+  <!-- Aggressive scan (10+ blocked in 30 seconds) -->
+  <rule id="110003" level="12" frequency="10" timeframe="30">
+    <if_matched_sid>110001</if_matched_sid>
+    <same_source_ip />
+    <description>pfSense: Aggressive port scan from $(srcip)</description>
+    <mitre>
+      <id>T1046</id>
+    </mitre>
+    <group>attack,recon,port_scan,</group>
+  </rule>
+
+  <!-- SSH brute force attempt -->
+  <rule id="110010" level="10" frequency="5" timeframe="120">
+    <if_sid>110001</if_sid>
+    <field name="dstport">22</field>
+    <same_source_ip />
+    <description>pfSense: Possible SSH brute force from $(srcip)</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>attack,brute_force,ssh,</group>
+  </rule>
+
+  <!-- RDP brute force attempt -->
+  <rule id="110011" level="10" frequency="5" timeframe="120">
+    <if_sid>110001</if_sid>
+    <field name="dstport">3389</field>
+    <same_source_ip />
+    <description>pfSense: Possible RDP brute force from $(srcip)</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>attack,brute_force,rdp,</group>
+  </rule>
+
+  <!-- SMB/Windows file sharing attack -->
+  <rule id="110012" level="10" frequency="3" timeframe="60">
+    <if_sid>110001</if_sid>
+    <field name="dstport">445</field>
+    <same_source_ip />
+    <description>pfSense: SMB attack attempt from $(srcip)</description>
+    <mitre>
+      <id>T1021.002</id>
+    </mitre>
+    <group>attack,smb,</group>
+  </rule>
+
+  <!-- Database port scanning -->
+  <rule id="110020" level="8">
+    <if_sid>110001</if_sid>
+    <field name="dstport">^(3306|5432|1433|27017|6379|9200)$</field>
+    <description>pfSense: Database port probe from $(srcip) to port $(dstport)</description>
+    <mitre>
+      <id>T1046</id>
+    </mitre>
+    <group>attack,recon,database,</group>
+  </rule>
+
+  <!-- Telnet access attempt (should never happen) -->
+  <rule id="110021" level="10">
+    <if_sid>110001</if_sid>
+    <field name="dstport">23</field>
+    <description>pfSense: Telnet access attempt from $(srcip)</description>
+    <mitre>
+      <id>T1021</id>
+    </mitre>
+    <group>attack,telnet,</group>
+  </rule>
+
+  <!-- Outbound connection blocked (possible malware) -->
+  <rule id="110030" level="7">
+    <if_sid>110000</if_sid>
+    <field name="action">block</field>
+    <field name="direction">out</field>
+    <description>pfSense: Outbound connection blocked to $(dstip):$(dstport)</description>
+    <group>firewall_block,outbound,</group>
+  </rule>
+
+  <!-- Multiple outbound blocks (possible C2 communication) -->
+  <rule id="110031" level="12" frequency="5" timeframe="300">
+    <if_matched_sid>110030</if_matched_sid>
+    <same_source_ip />
+    <description>pfSense: Multiple outbound blocks from $(srcip) - possible malware</description>
+    <mitre>
+      <id>T1071</id>
+    </mitre>
+    <group>attack,malware,c2,</group>
+  </rule>
+
+  <!-- ICMP flood detection -->
+  <rule id="110040" level="8" frequency="20" timeframe="10">
+    <if_sid>110000</if_sid>
+    <field name="protocol">icmp</field>
+    <field name="action">block</field>
+    <same_source_ip />
+    <description>pfSense: ICMP flood from $(srcip)</description>
+    <mitre>
+      <id>T1498</id>
+    </mitre>
+    <group>attack,dos,icmp_flood,</group>
+  </rule>
+
+  <!-- High-value port access (admin interfaces) -->
+  <rule id="110050" level="9">
+    <if_sid>110001</if_sid>
+    <field name="dstport">^(8080|8443|9090|10000)$</field>
+    <description>pfSense: Admin interface probe from $(srcip) to port $(dstport)</description>
+    <group>attack,recon,admin,</group>
+  </rule>
+
+  <!-- VPN port scanning -->
+  <rule id="110051" level="7">
+    <if_sid>110001</if_sid>
+    <field name="dstport">^(1194|500|4500|1701|1723)$</field>
+    <description>pfSense: VPN port probe from $(srcip) to port $(dstport)</description>
+    <group>attack,recon,vpn,</group>
+  </rule>
+
+</group>

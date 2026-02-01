@@ -1,0 +1,114 @@
+<!--
+  Wazuh Manager Configuration Example
+  
+  This shows the key configuration sections needed for the pfSense + AI integration.
+  Merge these settings with your existing ossec.conf.
+  
+  Location: /var/ossec/etc/ossec.conf (inside Docker container)
+-->
+
+<ossec_config>
+
+  <!-- ============================================ -->
+  <!-- SYSLOG INPUT - Receive logs from pfSense    -->
+  <!-- ============================================ -->
+  
+  <remote>
+    <connection>syslog</connection>
+    <port>514</port>
+    <protocol>udp</protocol>
+    <allowed-ips>10.10.0.0/24</allowed-ips>  <!-- Adjust to your network -->
+  </remote>
+
+  <!-- ============================================ -->
+  <!-- CUSTOM DECODERS AND RULES                   -->
+  <!-- ============================================ -->
+  
+  <ruleset>
+    <!-- Default ruleset -->
+    <decoder_dir>ruleset/decoders</decoder_dir>
+    <rule_dir>ruleset/rules</rule_dir>
+    
+    <!-- Custom pfSense decoders and rules -->
+    <decoder_dir>etc/decoders</decoder_dir>
+    <rule_dir>etc/rules</rule_dir>
+    
+    <!-- Exclude rules if needed -->
+    <rule_exclude>0215-policy_rules.xml</rule_exclude>
+  </ruleset>
+
+  <!-- ============================================ -->
+  <!-- ACTIVE RESPONSE CONFIGURATION               -->
+  <!-- ============================================ -->
+  
+  <!-- AI-Enhanced Firewall Block Command -->
+  <command>
+    <name>ai-firewall-block</name>
+    <executable>ai-firewall-block.sh</executable>
+    <timeout_allowed>yes</timeout_allowed>
+  </command>
+
+  <!-- Trigger on port scan detection (rule 110002) -->
+  <active-response>
+    <command>ai-firewall-block</command>
+    <location>defined-agent</location>
+    <agent_id>002</agent_id>  <!-- Your pfSense agent ID -->
+    <rules_id>110002</rules_id>
+  </active-response>
+
+  <!-- Trigger on aggressive scan (rule 110003) -->
+  <active-response>
+    <command>ai-firewall-block</command>
+    <location>defined-agent</location>
+    <agent_id>002</agent_id>
+    <rules_id>110003</rules_id>
+  </active-response>
+
+  <!-- Trigger on SSH brute force (rule 110010) -->
+  <active-response>
+    <command>ai-firewall-block</command>
+    <location>defined-agent</location>
+    <agent_id>002</agent_id>
+    <rules_id>110010</rules_id>
+  </active-response>
+
+  <!-- Trigger on RDP brute force (rule 110011) -->
+  <active-response>
+    <command>ai-firewall-block</command>
+    <location>defined-agent</location>
+    <agent_id>002</agent_id>
+    <rules_id>110011</rules_id>
+  </active-response>
+
+  <!-- Trigger on high severity alerts (level 10+) -->
+  <active-response>
+    <command>ai-firewall-block</command>
+    <location>defined-agent</location>
+    <agent_id>002</agent_id>
+    <level>10</level>
+  </active-response>
+
+  <!-- ============================================ -->
+  <!-- LOGGING CONFIGURATION                       -->
+  <!-- ============================================ -->
+  
+  <logging>
+    <log_format>json</log_format>
+  </logging>
+
+  <!-- Monitor active response log -->
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/ossec/logs/active-responses.log</location>
+  </localfile>
+
+  <!-- ============================================ -->
+  <!-- ALERTS CONFIGURATION                        -->
+  <!-- ============================================ -->
+  
+  <alerts>
+    <log_alert_level>3</log_alert_level>
+    <email_alert_level>12</email_alert_level>
+  </alerts>
+
+</ossec_config>
